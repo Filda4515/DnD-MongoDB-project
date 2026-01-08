@@ -154,8 +154,36 @@ class MainWindow(QMainWindow):
         self.get_desc(data.get("desc", "")) 
         
     # Display the spell info
-    def setup_spell_layout(self):
-        return 
+    def setup_spell_layout(self, name, data):
+        # Title
+        title = QLabel(f"{name} (Spell)")
+        title.setStyleSheet("font-size: 22px; font-weight: bold; color: blue;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.right_layout.addWidget(title)
+
+        # Detail table
+        group = QGroupBox("Spell Details")
+        form = QFormLayout()
+        
+        attrs = ["Level", "School", "Casting Time", "Range", "Duration", "Components", "Concentration"]
+        for attr in attrs:
+            val = data.get(attr, "-")
+            # Logic for coloring
+            if isinstance(val, bool):
+                lbl = QLabel("Yes" if val else "No")
+                lbl.setStyleSheet("color: red; font-weight: bold;" if val else "")
+            elif isinstance(val, list):
+                lbl = QLabel(", ".join(val))
+            else:
+                lbl = QLabel(str(val))
+            
+            form.addRow(QLabel(f"{attr}:"), lbl)
+        
+        group.setLayout(form)
+        self.right_layout.addWidget(group)
+
+        # Description
+        self.get_desc(data.get("desc", "")) 
     
     # Display currently selected item on right panel - main screen
     def display_items(self,current, previous):
@@ -170,14 +198,14 @@ class MainWindow(QMainWindow):
         self.clear_layout(self.right_layout)
         # Get type 
         item_type = data.get("type", "unknown")
-        if item_type == "monster" or "character":
+        if item_type == "monster" or item_type == "character":
             self.setup_character_layout(name, data)
         elif item_type == "spell":
             self.setup_spell_layout(name, data)
         else: 
             self.right_layout.addWidget(QLabel("Couldn't load item"))        
         return
-
+    # TODO : Form to create 
     def create_character(self):
         return
     
