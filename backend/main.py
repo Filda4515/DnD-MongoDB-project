@@ -4,9 +4,10 @@ from contextlib import asynccontextmanager
 from bson import ObjectId
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 from pymongo import AsyncMongoClient
-from typing import Annotated, List, Optional
+from typing import List
+
+from models import ItemModel, MonsterModel
 
 
 @asynccontextmanager
@@ -32,8 +33,7 @@ async def lifespan(app: FastAPI):
 
         monsters_seed_data = [
             {
-                "name": "Goblin", 
-                "ac": 15, "hp": 7, "speed": "30 ft", "challenge": "1/4",
+                "name": "Goblin", "ac": 15, "hp": 7, "speed": "30 ft", "challenge": "1/4",
                 "strength": 8, "dexterity": 14, "constitution": 10, "intelligence": 10, "wisdom": 8, "charisma": 8,
                 "held_item_id": await get_item_id("Iron Sword"),
                 "desc": "Goblins are small, black-hearted, selfish humanoids."
@@ -78,38 +78,6 @@ db = client.get_database("dnd_database")
 
 items_collection = db.get_collection("items")
 monsters_collection = db.get_collection("monsters")
-
-PyObjectId = Annotated[str, BeforeValidator(str)]
-
-
-class ItemModel(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    name: str
-    weight: float
-    value: str
-    rarity: str
-    desc: str
-
-    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
-
-
-class MonsterModel(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    name: str
-    ac: int
-    hp: int
-    speed: str
-    challenge: str
-    strength: int
-    dexterity: int
-    constitution: int
-    intelligence: int
-    wisdom: int
-    charisma: int
-    held_item_id: Optional[PyObjectId] = Field(default=None)
-    desc: str
-
-    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 @app.get("/status")
