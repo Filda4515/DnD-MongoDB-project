@@ -10,10 +10,9 @@ from typing import Annotated, List, Optional
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    count = await spells_collection.count_documents({})
-
-    if count == 0:
-        test_data = [
+    s_count = await spells_collection.count_documents({})
+    if s_count == 0:
+        spells_seed_data = [
             {
                 "name": "Acid Arrow", "level": 2, "school": "Evocation", "casting_time": "1 action",
                 "range": "90 feet", "duration": "Instantaneous", "components": ["V", "S", "M"], "concentration": False,
@@ -40,10 +39,22 @@ async def lifespan(app: FastAPI):
                 "desc": "Briefly surrounded..."
             }
         ]
-        await spells_collection.insert_many(test_data)
-        print("Successfully seeded 5 spells into Atlas!")
-
+        await spells_collection.insert_many(spells_seed_data)
+        print("Successfully seeded 5 spells!")
     await spells_collection.create_index([("name", "text"), ("desc", "text")])
+
+    m_count = await monsters_collection.count_documents({})
+    if m_count == 0:
+        monsters_seed_data = [
+            {"name": "Goblin", "hp": 7, "ac": 15, "challenge": "1/4", "desc": "Small humanoids..."},
+            {"name": "Mage", "hp": 40, "ac": 12, "challenge": "6", "desc": "A powerful caster..."},
+            {"name": "Cultist", "hp": 9, "ac": 12, "challenge": "1/8", "desc": "A fanatic..."},
+            {"name": "Acolyte", "hp": 9, "ac": 10, "challenge": "1/4", "desc": "A junior priest..."},
+            {"name": "Apprentice", "hp": 15, "ac": 10, "challenge": "1/2", "desc": "Learning magic..."}
+        ]
+        await monsters_collection.insert_many(monsters_seed_data)
+        print("Successfully seeded 5 monsters!")
+    await monsters_collection.create_index([("name", "text"), ("desc", "text")])
 
     yield
 
@@ -53,7 +64,9 @@ load_dotenv()
 MONGO_URL = os.getenv("MONGODB_URL")
 client = AsyncMongoClient(MONGO_URL)
 db = client.get_database("dnd_database")
+
 spells_collection = db.get_collection("spells")
+monsters_collection = db.get_collection("monsters")
 
 
 class SpellModel(BaseModel):
@@ -71,14 +84,32 @@ class SpellModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
+class MonsterModel(BaseModel):
+    id: Optional[Annotated[str, BeforeValidator(str)]] = Field(alias="_id", default=None)
+    name: str
+    ac: int
+    hp: int
+    speed: str
+    challenge: str
+    strength: int
+    dexterity: int
+    constitution: int
+    intelligence: int
+    wisdom: int
+    charisma: int
+    desc: str
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+
 @app.get("/status")
 def get_status():
     return {"status": "Online", "version": "1.0.0"}
 
 
 @app.get("/spells", response_model=List[SpellModel])
-async def get_all_spells():
-    return await spells_collection.find().to_list(100)
+async def get_all_spells(limit: int = 100):
+    return await spells_collection.find().to_list(limit)
 
 
 @app.get("/spells/{name}", response_model=SpellModel)
@@ -91,8 +122,22 @@ async def get_spell(name: str):
 
 @app.get("/search/spells", response_model=List[SpellModel])
 async def search_spells(query: str, limit: int = 100):
-    text_results = await spells_collection.find({"$text": {"$search": query}}).to_list(limit)
-    regex_results = await spells_collection.find({"name": {"$regex": query, "$options": "i"}}).to_list(limit)
-    combined = {spell["name"]: spell for spell in (text_results + regex_results)}
+    return await spells_collection.find({"$text": {"$search": query}}).to_list(limit)
 
-    return list(combined.values())
+
+@app.get("/monsters", response_model=List[MonsterModel])
+async def get_all_monsters(limit: int = 100):
+    return await monsters_collection.find().to_list(limit)
+
+
+@app.get("/monsters/{name}", response_model=MonsterModel)
+async def get_monster(name: str):
+    monster = await monsters_collection.find_one({"name": name})
+    if monster:
+        return monster
+    raise HTTPException(status_code=404, detail="Monster not found")
+
+
+@app.get("/search/monsters", response_model=List[MonsterModel])
+async def search_monsters(query: str, limit: int = 100):
+    return await monsters_collection.find({"$text": {"$search": query}}).to_list(limit)
