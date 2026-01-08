@@ -87,3 +87,12 @@ async def get_spell(name: str):
     if spell:
         return spell
     raise HTTPException(status_code=404, detail="Spell not found")
+
+
+@app.get("/search/spells", response_model=List[SpellModel])
+async def search_spells(query: str, limit: int = 100):
+    text_results = await spells_collection.find({"$text": {"$search": query}}).to_list(limit)
+    regex_results = await spells_collection.find({"name": {"$regex": query, "$options": "i"}}).to_list(limit)
+    combined = {spell["name"]: spell for spell in (text_results + regex_results)}
+
+    return list(combined.values())
