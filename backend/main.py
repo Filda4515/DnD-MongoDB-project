@@ -1,7 +1,8 @@
 # To run: fastapi dev main.py
 import os
-from contextlib import asynccontextmanager
 from bson import ObjectId
+from bson.errors import InvalidId
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pymongo import AsyncMongoClient
@@ -69,7 +70,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-app = FastAPI(lifespan=lifespan)
+version = "1.0.0"
+app = FastAPI(lifespan=lifespan, version=version)
 
 load_dotenv()
 MONGO_URL = os.getenv("MONGODB_URL")
@@ -82,33 +84,67 @@ monsters_collection = db.get_collection("monsters")
 
 @app.get("/status")
 def get_status():
-    return {"status": "Online", "version": "1.0.0"}
+    return {"status": "Online", "version": version}
 
 
-@app.get("/items", response_model=List[ItemModel])
-async def get_all_spells(limit: int = 100):
+@app.get("/items", response_model=List[ItemModel], tags=["Items"])
+async def get_all_items(limit: int = 100):
     return await items_collection.find().to_list(limit)
 
 
-@app.get("/items/{item_id}", response_model=ItemModel)
-async def get_item_by_id(item_id: str):
-    item = await items_collection.find_one({"_id": ObjectId(item_id)})
+@app.get("/items/{item_id}", response_model=ItemModel, tags=["Items"])
+async def get_item(item_id: str):
+    try:
+        obj_id = ObjectId(item_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    item = await items_collection.find_one({"_id": obj_id})
     if item:
         return item
     raise HTTPException(status_code=404, detail="Item not found")
 
 
-@app.get("/search/items", response_model=List[ItemModel])
+@app.get("/search/items", response_model=List[ItemModel], tags=["Items"])
 async def search_items(query: str, limit: int = 100):
     return await items_collection.find({"$text": {"$search": query}}).to_list(limit)
 
 
-@app.get("/monsters", response_model=List[MonsterModel])
+@app.post("/items", response_model=ItemModel, status_code=201, tags=["Items"])
+async def create_item(item: ItemModel):
+    item_dict = item.model_dump(by_alias=True, exclude={"id"})
+
+    existing = await items_collection.find_one({"name": item.name})
+    if existing:
+        raise HTTPException(status_code=400, detail="Item already exists")
+
+    result = await items_collection.insert_one(item_dict)
+
+    new_item = await items_collection.find_one({"_id": result.inserted_id})
+    return new_item
+
+
+@app.delete("/items/{item_id}", tags=["Items"])
+async def delete_item(item_id: str):
+    try:
+        obj_id = ObjectId(item_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    delete_result = await items_collection.delete_one({"_id": obj_id})
+
+    if delete_result.deleted_count == 1:
+        return {"message": "Item successfully deleted"}
+
+    raise HTTPException(status_code=404, detail="Item not found")
+
+
+@app.get("/monsters", response_model=List[MonsterModel], tags=["Monsters"])
 async def get_all_monsters(limit: int = 100):
     return await monsters_collection.find().to_list(limit)
 
 
-@app.get("/monsters/{name}", response_model=MonsterModel)
+@app.get("/monsters/{name}", response_model=MonsterModel, tags=["Monsters"])
 async def get_monster(name: str):
     monster = await monsters_collection.find_one({"name": name})
     if monster:
@@ -116,6 +152,39 @@ async def get_monster(name: str):
     raise HTTPException(status_code=404, detail="Monster not found")
 
 
-@app.get("/search/monsters", response_model=List[MonsterModel])
+@app.get("/search/monsters", response_model=List[MonsterModel], tags=["Monsters"])
 async def search_monsters(query: str, limit: int = 100):
     return await monsters_collection.find({"$text": {"$search": query}}).to_list(limit)
+
+
+@app.post("/monsters", response_model=MonsterModel, status_code=201, tags=["Monsters"])
+async def create_monster(monster: MonsterModel):
+    monster_dict = monster.model_dump(by_alias=True, exclude={"id"})
+
+    existing = await monsters_collection.find_one({"name": monster.name})
+    if existing:
+        raise HTTPException(status_code=400, detail="Monster already exists")
+
+    if monster.held_item_id:
+        try:
+            item_exists = await items_collection.find_one({"_id": ObjectId(monster.held_item_id)})
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid ID format")
+
+        if not item_exists:
+            raise HTTPException(status_code=400, detail="The specified held_item_id does not exist")
+
+    result = await monsters_collection.insert_one(monster_dict)
+
+    new_monster = await monsters_collection.find_one({"_id": result.inserted_id})
+    return new_monster
+
+
+@app.delete("/monsters/{monster_id}", tags=["Monsters"])
+async def delete_monster(monster_id: str):
+    delete_result = await monsters_collection.delete_one({"_id": ObjectId(monster_id)})
+
+    if delete_result.deleted_count == 1:
+        return {"message": "Monster successfully deleted"}
+
+    raise HTTPException(status_code=404, detail="Monster not found")
