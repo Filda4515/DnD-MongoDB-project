@@ -87,7 +87,7 @@ def get_status():
 
 
 @app.get("/items", response_model=List[ItemModel], tags=["Items"])
-async def get_all_spells(limit: int = 100):
+async def get_all_items(limit: int = 100):
     return await items_collection.find().to_list(limit)
 
 
