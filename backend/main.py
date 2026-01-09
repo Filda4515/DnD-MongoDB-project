@@ -166,7 +166,11 @@ async def create_monster(monster: MonsterModel):
         raise HTTPException(status_code=400, detail="Monster already exists")
 
     if monster.held_item_id:
-        item_exists = await items_collection.find_one({"_id": ObjectId(monster.held_item_id)})
+        try:
+            item_exists = await items_collection.find_one({"_id": ObjectId(monster.held_item_id)})
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid ID format")
+
         if not item_exists:
             raise HTTPException(status_code=400, detail="The specified held_item_id does not exist")
 
