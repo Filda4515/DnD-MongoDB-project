@@ -1,7 +1,8 @@
 # To run: fastapi dev main.py
 import os
-from contextlib import asynccontextmanager
 from bson import ObjectId
+from bson.errors import InvalidId
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pymongo import AsyncMongoClient
@@ -92,8 +93,13 @@ async def get_all_items(limit: int = 100):
 
 
 @app.get("/items/{item_id}", response_model=ItemModel, tags=["Items"])
-async def get_item_by_id(item_id: str):
-    item = await items_collection.find_one({"_id": ObjectId(item_id)})
+async def get_item(item_id: str):
+    try:
+        obj_id = ObjectId(item_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    item = await items_collection.find_one({"_id": obj_id})
     if item:
         return item
     raise HTTPException(status_code=404, detail="Item not found")
@@ -120,7 +126,12 @@ async def create_item(item: ItemModel):
 
 @app.delete("/items/{item_id}", tags=["Items"])
 async def delete_item(item_id: str):
-    delete_result = await items_collection.delete_one({"_id": ObjectId(item_id)})
+    try:
+        obj_id = ObjectId(item_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    delete_result = await items_collection.delete_one({"_id": obj_id})
 
     if delete_result.deleted_count == 1:
         return {"message": "Item successfully deleted"}
