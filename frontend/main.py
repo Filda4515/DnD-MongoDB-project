@@ -101,19 +101,40 @@ class MainWindow(QMainWindow):
     # Setup the left panel
     def setup_left_panel(self):
         panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(5, 5, 5, 5)
+        main_layout = QVBoxLayout(panel)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(10)
 
-        self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Search Item")
-        self.search_bar.textChanged.connect(self.filter_items)
+        # Monsters
+        monster_group = QGroupBox("Monsters")
+        monster_layout = QVBoxLayout(monster_group)
 
-        self.list_widget = QListWidget()
-        self.list_widget.addItems(self.all_data.keys())
-        self.list_widget.currentItemChanged.connect(self.display_items)
-        # Adding Widgets to side screen
-        layout.addWidget(self.search_bar)
-        layout.addWidget(self.list_widget)
+        self.monster_search = QLineEdit()
+        self.monster_search.setPlaceholderText("Search Monsters...")
+        self.monster_search.textChanged.connect(lambda t: self.filter_items(t, "monster"))
+
+        self.monster_list = QListWidget()
+        self.monster_list.itemClicked.connect(self.display_items)
+
+        monster_layout.addWidget(self.monster_search)
+        monster_layout.addWidget(self.monster_list)
+        main_layout.addWidget(monster_group)
+
+        # Items
+        item_group = QGroupBox("Items")
+        item_layout = QVBoxLayout(item_group)
+
+        self.item_search = QLineEdit()
+        self.item_search.setPlaceholderText("Search Items...")
+        self.item_search.textChanged.connect(lambda t: self.filter_items(t, "item"))
+
+        self.item_list = QListWidget()
+        self.item_list.itemClicked.connect(self.display_items)
+
+        item_layout.addWidget(self.item_search)
+        item_layout.addWidget(self.item_list)
+        main_layout.addWidget(item_group)
+
         return panel
 
     def fetch_all_data(self):
@@ -130,14 +151,14 @@ class MainWindow(QMainWindow):
         self.item_worker.start()
 
     def on_data_loaded(self, data_list, category_type):
+        target_list = self.monster_list if category_type == "monster" else self.item_list
+        target_list.clear()
+
         for item in data_list:
             item["category"] = category_type
             name = item.get("name")
             self.all_data[name] = item
-
-        # Refresh the list widget
-        self.list_widget.clear()
-        self.list_widget.addItems(self.all_data.keys())
+            target_list.addItem(name)
 
     def on_api_error(self, message):
         QMessageBox.critical(self, "API Error", f"Request failed: {message}")
@@ -230,23 +251,29 @@ class MainWindow(QMainWindow):
             val_desc.setStyleSheet("font-style: italic; color: #444;")
             self.right_layout.addWidget(val_desc)
 
+        btn_layout = QHBoxLayout()
+
+        btn_edit = QPushButton("Edit Monster")
+        btn_edit.setStyleSheet("""
+            QPushButton { background-color: #ffc107; color: black;
+                        font-weight: bold; padding: 5px; border-radius: 3px; }
+            QPushButton:hover { background-color: #e0a800; }
+        """)
+        btn_edit.clicked.connect(lambda: self.edit_monster(data))
+
         btn_delete = QPushButton("Delete Monster")
         btn_delete.setStyleSheet("""
-            QPushButton {
-                background-color: #dc3545;
-                color: white;
-                font-weight: bold;
-                padding: 5px;
-                border-radius: 3px;
-                margin-top: 20px;
-            }
+            QPushButton { background-color: #dc3545; color: white;
+                        font-weight: bold; padding: 5px; border-radius: 3px; }
             QPushButton:hover { background-color: #c82333; }
         """)
-
         entity_id = data.get("_id")
         btn_delete.clicked.connect(lambda: self.delete_entity("monsters", entity_id, name))
 
-        self.right_layout.addWidget(btn_delete)
+        btn_layout.addWidget(btn_edit)
+        btn_layout.addWidget(btn_delete)
+
+        self.right_layout.addLayout(btn_layout)
 
     # Display the item info
     def setup_item_layout(self, name, data):
@@ -287,36 +314,65 @@ class MainWindow(QMainWindow):
             val_desc.setStyleSheet("font-style: italic; color: #444;")
             self.right_layout.addWidget(val_desc)
 
+        btn_layout = QHBoxLayout()
+
+        btn_edit = QPushButton("Edit Item")
+        btn_edit.setStyleSheet("""
+            QPushButton { background-color: #ffc107; color: black;
+                        font-weight: bold; padding: 5px; border-radius: 3px; }
+            QPushButton:hover { background-color: #e0a800; }
+        """)
+        btn_edit.clicked.connect(lambda: self.edit_item(data))
+
         btn_delete = QPushButton("Delete Item")
         btn_delete.setStyleSheet("""
-            QPushButton {
-                background-color: #dc3545;
-                color: white;
-                font-weight: bold;
-                padding: 5px;
-                border-radius: 3px;
-                margin-top: 20px;
-            }
+            QPushButton { background-color: #dc3545; color: white;
+                        font-weight: bold; padding: 5px; border-radius: 3px; }
             QPushButton:hover { background-color: #c82333; }
         """)
-
         entity_id = data.get("_id")
-        btn_delete.clicked.connect(lambda: self.delete_entity("items", entity_id, name))
+        btn_delete.clicked.connect(lambda: self.delete_entity("item", entity_id, name))
 
-        self.right_layout.addWidget(btn_delete)
+        btn_layout.addWidget(btn_edit)
+        btn_layout.addWidget(btn_delete)
 
-    # Filter items in search Bar
-    def filter_items(self, text):
-        search_text = text.lower()
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            item.setHidden(search_text not in item.text().lower())
+        self.right_layout.addLayout(btn_layout)
+
+    def filter_items(self, text, category):
+        if not text.strip():
+            endpoint = f"{category}s"
+            self.refresh_worker = DataWorker(endpoint)
+            self.refresh_worker.data_signal.connect(lambda data: self.on_data_loaded(data, category))
+            self.refresh_worker.error_signal.connect(self.on_api_error)
+            self.refresh_worker.start()
+            return
+
+        endpoint = f"search/{category}s?query={text}"
+
+        self.search_worker = DataWorker(endpoint)
+
+        self.search_worker.data_signal.connect(lambda data: self.on_search_results(data, category))
+        self.search_worker.error_signal.connect(self.on_api_error)
+        self.search_worker.start()
+
+    def on_search_results(self, results, category):
+        target_list = self.monster_list if category == "monster" else self.item_list
+        target_list.clear()
+
+        for item in results:
+            item["category"] = category
+            name = item.get("name")
+
+            self.all_data[name] = item
+            target_list.addItem(name)
 
     def clear_layout(self, layout):
         while layout.count():
             child = layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+            elif child.layout() is not None:
+                self.clear_layout(child.layout())
 
     def create_monster(self):
         self.clear_layout(self.right_layout)
@@ -547,6 +603,218 @@ class MainWindow(QMainWindow):
         self.all_data.clear()
         self.fetch_all_data()
 
+        self.clear_layout(self.right_layout)
+
+    def edit_monster(self, data):
+        self.clear_layout(self.right_layout)
+        self.form_inputs = {}
+
+        entity_id = data.get("_id")
+
+        title = QLabel(f"Edit Monster: {data.get("name")}")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #d35400;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.right_layout.addWidget(title)
+
+        # Basic Info
+        group_basic = QGroupBox("Basic Info")
+        form_basic = QFormLayout()
+
+        self.form_inputs["name"] = QLineEdit()
+        self.form_inputs["name"].setText(data.get("name", ""))
+        form_basic.addRow("Name:", self.form_inputs["name"])
+
+        self.form_inputs["desc"] = QLineEdit()
+        self.form_inputs["desc"].setText(data.get("desc", ""))
+        form_basic.addRow("Description:", self.form_inputs["desc"])
+
+        self.form_inputs["held_item_id"] = QComboBox()
+        self.form_inputs["held_item_id"].addItem("None", None)
+
+        current_held_id = data.get("held_item_id")
+        for name, item_data in self.all_data.items():
+            if item_data.get("category") == "item":
+                item_id = item_data.get("_id")
+                self.form_inputs["held_item_id"].addItem(name, item_id)
+
+                if str(item_id) == str(current_held_id):
+                    self.form_inputs["held_item_id"].setCurrentIndex(self.form_inputs["held_item_id"].count() - 1)
+
+        form_basic.addRow("Equipped Item:", self.form_inputs["held_item_id"])
+        group_basic.setLayout(form_basic)
+        self.right_layout.addWidget(group_basic)
+
+        # Combat Stats
+        group_combat = QGroupBox("Combat Stats")
+        form_combat = QFormLayout()
+
+        self.form_inputs["hp"] = QSpinBox()
+        self.form_inputs["hp"].setRange(1, 1000)
+        self.form_inputs["hp"].setValue(int(data.get("hp", 0)))
+        form_combat.addRow("Hit Points:", self.form_inputs["hp"])
+
+        self.form_inputs["ac"] = QSpinBox()
+        self.form_inputs["ac"].setRange(1, 50)
+        self.form_inputs["ac"].setValue(int(data.get("ac", 10)))
+        form_combat.addRow("Armor Class:", self.form_inputs["ac"])
+
+        self.form_inputs["speed"] = QLineEdit()
+        self.form_inputs["speed"].setText(str(data.get("speed", "")))
+        form_combat.addRow("Speed:", self.form_inputs["speed"])
+
+        self.form_inputs["challenge"] = QLineEdit()
+        self.form_inputs["challenge"].setText(str(data.get("challenge", "")))
+        form_combat.addRow("Challenge Rating:", self.form_inputs["challenge"])
+
+        group_combat.setLayout(form_combat)
+        self.right_layout.addWidget(group_combat)
+
+        # Ability Scores
+        group_stats = QGroupBox("Ability Scores")
+        grid_stats = QGridLayout()
+        abilities = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+        row, col = 0, 0
+        for attr in abilities:
+            lbl = QLabel(attr[:3].upper())
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            spin = QSpinBox()
+            spin.setRange(1, 30)
+            spin.setValue(int(data.get(attr, 10)))
+            self.form_inputs[attr] = spin
+            grid_stats.addWidget(lbl, row, col)
+            grid_stats.addWidget(spin, row + 1, col)
+            col += 1
+            if col > 2:
+                col = 0
+                row += 2
+        group_stats.setLayout(grid_stats)
+        self.right_layout.addWidget(group_stats)
+
+        btn_save = QPushButton("Save Changes")
+        btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                padding: 5px;
+                border: none;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:pressed {
+                background-color: #1e7e34;
+            }
+        """)
+
+        btn_save.clicked.connect(lambda: self.update_entity("monsters", entity_id))
+        self.right_layout.addWidget(btn_save)
+
+    def edit_item(self, data):
+        self.clear_layout(self.right_layout)
+        self.form_inputs = {}
+        entity_id = data.get("_id")
+
+        title = QLabel(f"Edit Item: {data.get('name')}")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #d35400;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.right_layout.addWidget(title)
+
+        group_basic = QGroupBox("Item Properties")
+        form_basic = QFormLayout()
+
+        self.form_inputs["name"] = QLineEdit()
+        self.form_inputs["name"].setText(data.get("name", ""))
+        form_basic.addRow("Item Name:", self.form_inputs["name"])
+
+        self.form_inputs["value"] = QLineEdit()
+        self.form_inputs["value"].setText(data.get("value", ""))
+        form_basic.addRow("Value:", self.form_inputs["value"])
+
+        self.form_inputs["weight"] = QDoubleSpinBox()
+        self.form_inputs["weight"].setRange(0.0, 500.0)
+        self.form_inputs["weight"].setValue(float(data.get("weight", 0.0)))
+        form_basic.addRow("Weight (lb):", self.form_inputs["weight"])
+
+        self.form_inputs["rarity"] = QComboBox()
+        rarities = ["Common", "Uncommon", "Rare", "Very Rare", "Legendary"]
+        self.form_inputs["rarity"].addItems(rarities)
+        self.form_inputs["rarity"].setCurrentText(data.get("rarity", "Common"))
+        form_basic.addRow("Rarity:", self.form_inputs["rarity"])
+
+        group_basic.setLayout(form_basic)
+        self.right_layout.addWidget(group_basic)
+
+        group_desc = QGroupBox("Description")
+        desc_layout = QVBoxLayout()
+        self.form_inputs["desc"] = QLineEdit()
+        self.form_inputs["desc"].setText(data.get("desc", ""))
+        desc_layout.addWidget(self.form_inputs["desc"])
+        group_desc.setLayout(desc_layout)
+        self.right_layout.addWidget(group_desc)
+
+        btn_save = QPushButton("Save Changes")
+        btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                padding: 5px;
+                border: none;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:pressed {
+                background-color: #1e7e34;
+            }
+        """)
+
+        btn_save.clicked.connect(lambda: self.update_entity("items", entity_id))
+        self.right_layout.addWidget(btn_save)
+
+    def update_entity(self, endpoint_base, entity_id):
+        data = {}
+        for key, widget in self.form_inputs.items():
+            if isinstance(widget, QLineEdit):
+                data[key] = widget.text()
+            elif isinstance(widget, QSpinBox) or isinstance(widget, QDoubleSpinBox):
+                data[key] = widget.value()
+            elif isinstance(widget, QComboBox):
+                if key == "held_item_id":
+                    data[key] = widget.currentData()
+                else:
+                    data[key] = widget.currentText()
+
+        required_fields = []
+        if endpoint_base == "monsters":
+            required_fields = ["name", "desc", "speed", "challenge"]
+        elif endpoint_base == "items":
+            required_fields = ["name", "value", "desc"]
+
+        missing_fields = []
+        for field in required_fields:
+            if not data.get(field):
+                label = self.display_labels.get(field, field.capitalize())
+                missing_fields.append(label)
+
+        if missing_fields:
+            error_msg = "The following fields are required:\n\n" + "\n".join(missing_fields)
+            QMessageBox.warning(self, "Validation Error", error_msg)
+            return
+        full_path = f"{endpoint_base}/{entity_id}"
+
+        self.edit_worker = DataWorker(full_path, method="PUT", data=data)
+        self.edit_worker.data_signal.connect(self.on_edit_success)
+        self.edit_worker.error_signal.connect(self.on_api_error)
+        self.edit_worker.start()
+
+    def on_edit_success(self, response_data):
+        QMessageBox.information(self, "Success", "Updated successfully!")
+        self.all_data.clear()
+        self.fetch_all_data()
         self.clear_layout(self.right_layout)
 
     def delete_entity(self, endpoint, entity_id, name):
