@@ -2,7 +2,7 @@ import sys
 import httpx
 from PyQt6.QtCore import Qt,QThread, pyqtSignal 
 from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QSplitter, QMainWindow, QListWidget, QLineEdit, QLabel, QFormLayout, QGroupBox, QGridLayout
-from PyQt6.QtWidgets import QToolButton, QSizePolicy, QHBoxLayout, QFrame, QSpinBox, QComboBox
+from PyQt6.QtWidgets import QToolButton, QSizePolicy, QHBoxLayout, QFrame, QSpinBox, QComboBox, QMessageBox
 
 
 class DataWorker(QThread):
@@ -22,8 +22,10 @@ class DataWorker(QThread):
             with httpx.Client(timeout=5.0) as client:
                 if self.method == "GET":
                     response = client.get(url)
-            
-            
+                elif self.method =="POST":
+                    response = client.post(url, json=self.data)
+                elif self.method == "DELETE":
+                    response = client.delete(url)
             response.raise_for_status()
             self.data_received.emit(response.json())
         except Exception as e:  
@@ -100,21 +102,20 @@ class MainWindow(QMainWindow):
         self.fetch_all_data()
         
     def fetch_all_data(self):
-        # We fetch monsters first (example)
+        # Fetch monsters 
         self.monster_worker = DataWorker("monsters")
         self.monster_worker.data_received.connect(lambda data: self.on_data_loaded(data, "monster"))
         self.monster_worker.error_signal.connect(self.on_data_error)
         self.monster_worker.start()
 
-        # Then fetch items
-        # self.item_worker = DataWorker("items")
-        # self.item_worker.data_received.connect(self.on_data_loaded)
-        # self.item_worker.start()
-
+        # Fetch items
+        self.item_worker = DataWorker("items")
+        self.item_worker.data_received.connect(lambda data: self.on_data_loaded(data, "items"))
+        self.item_worker.error_signal.connect(self.on_data_error)
+        self.item_worker.start()
+        
     def on_data_error(self, error_message):
         print(f"CHYBA: {error_message}")
-        # Môžeš zobraziť aj vyskakovacie okno
-        # QMessageBox.critical(self, "Chyba sťahovania", f"Nepodarilo sa načítať dáta:\n{error_message}")
 
     def on_data_loaded(self, data_list, category_type):
         # Update our local dictionary with data from the API
@@ -127,9 +128,58 @@ class MainWindow(QMainWindow):
         self.list_widget.clear()
         self.list_widget.addItems(self.all_data.keys())
     
+    # Save created entity 
+    def save_data(self, endpoint, data_to_save):
+        self.save_worker = DataWorker(endpoint, method="POST", data=data_to_save)
+        
+        # 2. Prepojíme signály
+        self.save_worker.result_signal.connect(self.on_save_success) # Úspech
+        self.save_worker.error_signal.connect(self.on_data_error)   
+        
+        # 3. Spustíme
+        self.save_worker.start()
+
+    def on_save_success(self, response_data):
+        name = response_data.get("name")
+        if not name: return
+
+        # 1. Pridaj do lokálnych dát
+        # Ak API nevratilo kategoriu, doplníme ju, aby fungovalo klikanie
+        if "category" not in response_data:
+            response_data["category"] = "monster" 
+            
+        self.all_data[name] = response_data
+
+        # 2. Pridaj položku do QListWidgetu
+        self.list_widget.addItem(name)
+
+    def save_character_data(self):
+        print("Tlačidlo Save bolo stlačené") #  
+        data = {}
+        
+        # Zber dát z formulára
+        for key, widget in self.form_inputs.items():
+            if isinstance(widget, QLineEdit):
+                value = widget.text()
+                data[key] = value
+            elif isinstance(widget, QSpinBox):
+                data[key] = widget.value()
+            elif isinstance(widget, QComboBox):
+                data[key] = widget.currentText()
+        
+        print(f"Zozbierané dáta: {data}") # 2. Debug výpis - čo sme prečítali z formulára?
+
+        # VALIDÁCIA - Tu bol problém (tiché zlyhanie)
+        if not data.get("name"):
+            print("CHYBA: Meno nie je vyplnené!")
+            QMessageBox.warning(self, "Validation Error", "Name field is required!")
+            return
+
+        # Ak prejdeme validáciou, odosielame
+        endpoint = "monsters" 
+        self.save_data(endpoint, data)
     
     
-    # TODO: Changed the hardcoded items to call request from database
     # Setup the left panel 
     def setup_left_panel(self):
         panel = QWidget()
@@ -195,7 +245,6 @@ class MainWindow(QMainWindow):
         
         row, col = 0,0
         for key in abilities:
-            vbox = QVBoxLayout
             lbl_name = QLabel(key[:3].upper())
             lbl_name.setStyleSheet("color: gray; font-size: 10px;")
             lbl_val = QLabel(str(data.get(key, "-")))
@@ -382,7 +431,7 @@ class MainWindow(QMainWindow):
         # Save Button
         btn_save = QPushButton("Save Character")
         btn_save.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 5px;")
-        # btn_save.clicked.connect(self.save_character_data) 
+        btn_save.clicked.connect(self.save_character_data) 
         self.right_layout.addWidget(btn_save)
     
     def create_item(self):
