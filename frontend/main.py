@@ -5,17 +5,30 @@ from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QSp
 from PyQt6.QtWidgets import QToolButton, QSizePolicy
 
 
-class StatusWorker(QThread):
-    result_signal = pyqtSignal(str)
-
+class DataWorker(QThread):
+    result_signal = pyqtSignal(dict)
+    data_received = pyqtSignal(list)
+    error_signal = pyqtSignal(str) 
+    def __init__(self, endpoint, method="GET", data=None):
+        super().__init__()
+        self.endpoint = endpoint
+        self.method = method
+        self.data = data
+            
     def run(self):
-        try:
-            response = httpx.get("http://127.0.0.1:8000/status", timeout=5.0)
-            self.result_signal.emit(f"Success: {response.text}")
-        except Exception as e:
-            self.result_signal.emit(f"Connection Failed: {e}")
-
-
+        try: 
+            url = f"http://127.0.0.1:8000/{self.endpoint}"
+            
+            with httpx.Client(timeout=5.0) as client:
+                if self.method == "GET":
+                    response = client.get(url)
+            
+            
+            response.raise_for_status()
+            self.data_received.emit(response.json())
+        except Exception as e:  
+            self.error_signal.emit(str(e))
+        
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -27,43 +40,10 @@ class MainWindow(QMainWindow):
             "type", "cost", "weight", "damage", "damage_type", 
             "armor_class", "range", "properties", "desc"
         ]
-        # Test Data
+        # Data
+        self.all_data = {}
         
-        self.all_data = {
-            # --- Spells ---
-            "Acid Arrow": {
-                "category": "spell",  
-                "Level": 2, "School": "Evocation", "Casting Time": "1 action",
-                "Range": "90 feet", "Duration": "Instantaneous", 
-                "Components": ["V", "S", "M"], "Concentration": False,
-                "desc": "A shimmering green arrow streaks toward a target..."
-            },
-            "Detect Magic": {
-                "category": "spell",
-                "Level": 1, "School": "Divination", "Casting Time": "1 action",
-                "Range": "Self", "Duration": "10 min", 
-                "Components": ["V", "S"], "Concentration": True,
-                "desc": "For the duration, you sense the presence of magic..."
-            },
-            # --- Monsters ---
-            "Goblin Scout": {
-                "category": "monster",
-                "Armor Class": 15, "Hit Points": 7, "Speed": "30 ft.",
-                "Strength": 8, "Dexterity": 14, "Constitution": 10, 
-                "Intelligence": 10, "Wisdom": 8, "Charisma": 8,
-                "inventory": ["Shortbow", "Potion of Healing"], 
-                "desc": "Small and fast goblin."
-            },
-            "Orc Warrior": {
-                "category": "monster",
-                "Armor Class": 13, "Hit Points": 15, "Speed": "30 ft.",
-                "Strength": 16, "Dexterity": 12, "Constitution": 16, 
-                "Intelligence": 7, "Wisdom": 11, "Charisma": 10,
-                "inventory": ["Iron Sword", "Heavy Crossbow"],
-                "desc": "Brutal fighter."
-            }        
-            }
-        
+           
         
         # Splitter - for side screen and main screen 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -82,6 +62,36 @@ class MainWindow(QMainWindow):
         # Base size for panels  
         self.splitter.setSizes([200,600])
 
+        self.fetch_all_data()
+        
+    def fetch_all_data(self):
+        # We fetch monsters first (example)
+        self.monster_worker = DataWorker("monsters")
+        self.monster_worker.data_received.connect(self.on_data_loaded)
+        self.monster_worker.error_signal.connect(self.on_data_error)
+        self.monster_worker.start()
+
+        # Then fetch items
+        # self.item_worker = DataWorker("items")
+        # self.item_worker.data_received.connect(self.on_data_loaded)
+        # self.item_worker.start()
+
+    def on_data_error(self, error_message):
+        print(f"CHYBA: {error_message}")
+        # Môžeš zobraziť aj vyskakovacie okno
+        # QMessageBox.critical(self, "Chyba sťahovania", f"Nepodarilo sa načítať dáta:\n{error_message}")
+
+    def on_data_loaded(self, data_list):
+        # Update our local dictionary with data from the API
+        for item in data_list:
+            name = item.get("name")
+            self.all_data[name] = item
+        
+        # Refresh the list widget
+        self.list_widget.clear()
+        self.list_widget.addItems(self.all_data.keys())
+    
+    
     
     # TODO: Changed the hardcoded items to call request from database
     # Setup the left panel 
@@ -256,18 +266,10 @@ class MainWindow(QMainWindow):
     # TODO : Logic for function
     def set_image_from_url(self, url):
         return
-    
-    def run_worker(self):
-        print("Pinging...")
-
-        self.worker = StatusWorker()
-
-        self.worker.result_signal.connect(print)
-        self.worker.start()
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
+
