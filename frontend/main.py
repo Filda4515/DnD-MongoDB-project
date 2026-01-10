@@ -2,7 +2,7 @@ import sys
 import httpx
 from PyQt6.QtCore import Qt,QThread, pyqtSignal 
 from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QSplitter, QMainWindow, QListWidget, QLineEdit, QLabel, QFormLayout, QGroupBox, QGridLayout
-from PyQt6.QtWidgets import QToolButton, QSizePolicy
+from PyQt6.QtWidgets import QToolButton, QSizePolicy, QHBoxLayout, QFrame, QSpinBox, QComboBox
 
 
 class DataWorker(QThread):
@@ -40,6 +40,20 @@ class MainWindow(QMainWindow):
             "type", "cost", "weight", "damage", "damage_type", 
             "armor_class", "range", "properties", "desc"
         ]
+        self.display_labels = {
+            "name": "Name",
+            "ac": "Armor Class",
+            "hp": "Hit Points",
+            "speed": "Speed",
+            "challenge": "Challenge Rating",
+            "strength": "STR",
+            "dexterity": "DEX",
+            "constitution": "CON",
+            "intelligence": "INT",
+            "wisdom": "WIS",
+            "charisma": "CHA",
+            "desc": "Description"
+            }
         # Data
         self.all_data = {}
         
@@ -53,8 +67,29 @@ class MainWindow(QMainWindow):
         self.left_widget = self.setup_left_panel()
         # Initial right panel 
         self.right_widget = QWidget()
-        self.right_layout = QVBoxLayout(self.right_widget)
-        self.right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.main_right_layout = QVBoxLayout(self.right_widget)
+        self.main_right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        # Buttons for creation
+        self.button_layout = QHBoxLayout()
+        self.btn_char = QPushButton("New Character")
+        self.btn_char.clicked.connect(self.create_character)
+        self.btn_item = QPushButton("New Item")
+        self.btn_item.clicked.connect(self.create_item)
+        
+        self.button_layout.addWidget(self.btn_char)
+        self.button_layout.addWidget(self.btn_item)
+        
+        self.main_right_layout.addLayout(self.button_layout)
+        # Separation Line
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        self.main_right_layout.addWidget(line)
+        
+        
+        # Information Layout 
+        self.right_layout = QVBoxLayout()
+        self.main_right_layout.addLayout(self.right_layout)
         
         # Add panels to splitter   
         self.splitter.addWidget(self.left_widget)
@@ -67,7 +102,7 @@ class MainWindow(QMainWindow):
     def fetch_all_data(self):
         # We fetch monsters first (example)
         self.monster_worker = DataWorker("monsters")
-        self.monster_worker.data_received.connect(self.on_data_loaded)
+        self.monster_worker.data_received.connect(lambda data: self.on_data_loaded(data, "monster"))
         self.monster_worker.error_signal.connect(self.on_data_error)
         self.monster_worker.start()
 
@@ -81,9 +116,10 @@ class MainWindow(QMainWindow):
         # Môžeš zobraziť aj vyskakovacie okno
         # QMessageBox.critical(self, "Chyba sťahovania", f"Nepodarilo sa načítať dáta:\n{error_message}")
 
-    def on_data_loaded(self, data_list):
+    def on_data_loaded(self, data_list, category_type):
         # Update our local dictionary with data from the API
         for item in data_list:
+            item["category"] = category_type
             name = item.get("name")
             self.all_data[name] = item
         
@@ -142,24 +178,27 @@ class MainWindow(QMainWindow):
         # Combat stats
         combat_group = QGroupBox("Combat Stats")
         combat_layout = QFormLayout()
-        for attr in ["Hit Points", "Armor Class", "Speed", "Challenge"]:
-            item_attr = str(data.get(attr, "-"))
-            combat_layout.addRow(QLabel(f"{attr}: "), QLabel(f"{item_attr}"))
-        
+        for key in ["hp", "ac", "speed", "challenge"]:
+            val = str(data.get(key, "-"))
+            
+            display_name = self.display_labels.get(key, key.title())
+            
+            combat_layout.addRow(QLabel(f"{display_name}: "), QLabel(val))
+            
         combat_group.setLayout(combat_layout)
         self.right_layout.addWidget(combat_group)
         
         # Attributes 
         abil_group = QGroupBox("Abbility Scores")
         grid =  QGridLayout()
-        abilities = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
+        abilities = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
         
         row, col = 0,0
-        for attr in abilities:
+        for key in abilities:
             vbox = QVBoxLayout
-            lbl_name = QLabel(attr[:3].upper())
+            lbl_name = QLabel(key[:3].upper())
             lbl_name.setStyleSheet("color: gray; font-size: 10px;")
-            lbl_val = QLabel(str(data.get(attr, "-")))
+            lbl_val = QLabel(str(data.get(key, "-")))
             lbl_val.setStyleSheet("font-size: 16px; font-weight: bold;")
             
             # Vloženie do gridu cez kontajner (aby to bolo pekne pod sebou)
@@ -254,11 +293,97 @@ class MainWindow(QMainWindow):
         return
 
     def create_character(self):
-        title = QLabel("Monster/CharacterCreation")
+        self.clear_layout(self.right_layout)
         
-        group = QGroupBox("Creation")
-        form = QFormLayout()
-        return
+        # Title
+        title = QLabel("Create New Character / Monster")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #0078D7;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.right_layout.addWidget(title)
+
+        # Dictionary Inicialization
+        self.form_inputs = {} 
+
+        # Basic Info 
+        group_basic = QGroupBox("Basic Info")
+        form_basic = QFormLayout()
+        
+        # Name (Text)
+        self.form_inputs["name"] = QLineEdit()
+        form_basic.addRow("Name:", self.form_inputs["name"])
+        
+        # Category (Dropdown)
+        self.form_inputs["category"] = QComboBox()
+        self.form_inputs["category"].addItems(["monster", "character"])
+        form_basic.addRow("Category:", self.form_inputs["category"])
+        
+        group_basic.setLayout(form_basic)
+        self.right_layout.addWidget(group_basic)
+
+        # Combat Stats 
+        group_combat = QGroupBox("Combat Stats")
+        form_combat = QFormLayout()
+        
+        # HP (Number)
+        self.form_inputs["hp"] = QSpinBox()
+        self.form_inputs["hp"].setRange(1, 1000) # Rozsah 1 až 1000
+        form_combat.addRow("Hit Points:", self.form_inputs["hp"])
+        
+        # AC (Number)
+        self.form_inputs["ac"] = QSpinBox()
+        self.form_inputs["ac"].setRange(1, 50)
+        self.form_inputs["ac"].setValue(10) # Default hodnota
+        form_combat.addRow("Armor Class:", self.form_inputs["ac"])
+        
+        # Speed (Text, because "30 ft., fly 60 ft.")
+        self.form_inputs["speed"] = QLineEdit()
+        self.form_inputs["speed"].setPlaceholderText("e.g. 30 ft.")
+        form_combat.addRow("Speed:", self.form_inputs["speed"])
+
+        # Challenge (Text, because "1/4")
+        self.form_inputs["challenge"] = QLineEdit()
+        form_combat.addRow("Challenge Rating:", self.form_inputs["challenge"])
+        
+        group_combat.setLayout(form_combat)
+        self.right_layout.addWidget(group_combat)
+
+        # Ability Scores 
+        group_stats = QGroupBox("Ability Scores")
+        grid_stats = QGridLayout()
+        
+        abilities = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+        
+        row, col = 0, 0
+        for attr in abilities:
+            # Label (STR, DEX...)
+            lbl = QLabel(attr[:3].upper())
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            # Input (SpinBox 1-30)
+            spin = QSpinBox()
+            spin.setRange(1, 30)
+            spin.setValue(10)
+            
+            # Save to dictionary
+            self.form_inputs[attr] = spin
+            
+            # Mriežka
+            grid_stats.addWidget(lbl, row, col)
+            grid_stats.addWidget(spin, row + 1, col)
+            
+            col += 1
+            if col > 2: 
+                col = 0
+                row += 2 
+                
+        group_stats.setLayout(grid_stats)
+        self.right_layout.addWidget(group_stats)
+
+        # Save Button
+        btn_save = QPushButton("Save Character")
+        btn_save.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 5px;")
+        # btn_save.clicked.connect(self.save_character_data) 
+        self.right_layout.addWidget(btn_save)
     
     def create_item(self):
         return
