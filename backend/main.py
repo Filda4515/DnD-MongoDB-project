@@ -124,6 +124,26 @@ async def create_item(item: ItemModel):
     return new_item
 
 
+@app.put("/items/{item_id}", response_model=ItemModel, tags=["Items"])
+async def update_item(item_id: str, item_data: ItemModel):
+    try:
+        obj_id = ObjectId(item_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    update_data = item_data.model_dump(by_alias=True, exclude={"id"})
+
+    result = await items_collection.find_one_and_update(
+        {"_id": obj_id},
+        {"$set": update_data},
+        return_document=True
+    )
+
+    if result:
+        return result
+    raise HTTPException(status_code=404, detail="Item not found")
+
+
 @app.delete("/items/{item_id}", tags=["Items"])
 async def delete_item(item_id: str):
     try:
@@ -144,9 +164,14 @@ async def get_all_monsters(limit: int = 100):
     return await monsters_collection.find().to_list(limit)
 
 
-@app.get("/monsters/{name}", response_model=MonsterModel, tags=["Monsters"])
-async def get_monster(name: str):
-    monster = await monsters_collection.find_one({"name": name})
+@app.get("/monsters/{monster_id}", response_model=MonsterModel, tags=["Monsters"])
+async def get_monster(monster_id: str):
+    try:
+        obj_id = ObjectId(monster_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    monster = await monsters_collection.find_one({"_id": obj_id})
     if monster:
         return monster
     raise HTTPException(status_code=404, detail="Monster not found")
@@ -178,6 +203,34 @@ async def create_monster(monster: MonsterModel):
 
     new_monster = await monsters_collection.find_one({"_id": result.inserted_id})
     return new_monster
+
+
+@app.put("/monsters/{monster_id}", response_model=MonsterModel, tags=["Monsters"])
+async def update_monster(monster_id: str, monster_data: MonsterModel):
+    try:
+        obj_id = ObjectId(monster_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    if monster_data.held_item_id:
+        try:
+            item_exists = await items_collection.find_one({"_id": ObjectId(monster_data.held_item_id)})
+            if not item_exists:
+                raise HTTPException(status_code=400, detail="The specified held_item_id does not exist")
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid held_item_id format")
+
+    update_data = monster_data.model_dump(by_alias=True, exclude={"id"})
+
+    result = await monsters_collection.find_one_and_update(
+        {"_id": obj_id},
+        {"$set": update_data},
+        return_document=True
+    )
+
+    if result:
+        return result
+    raise HTTPException(status_code=404, detail="Monster not found")
 
 
 @app.delete("/monsters/{monster_id}", tags=["Monsters"])
