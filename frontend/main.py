@@ -2,7 +2,7 @@ import sys
 import httpx
 from PyQt6.QtCore import Qt,QThread, pyqtSignal 
 from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QSplitter, QMainWindow, QListWidget, QLineEdit, QLabel, QFormLayout, QGroupBox, QGridLayout
-
+from PyQt6.QtWidgets import QToolButton, QSizePolicy
 
 
 class StatusWorker(QThread):
@@ -21,40 +21,49 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("DnD Main Window")
         self.resize(800,600)
-            
+        
+        # Order of possible item stats
+        self.item_stats_order = [
+            "type", "cost", "weight", "damage", "damage_type", 
+            "armor_class", "range", "properties", "desc"
+        ]
         # Test Data
+        
         self.all_data = {
             # --- Spells ---
             "Acid Arrow": {
-                "type": "spell",  
+                "category": "spell",  
                 "Level": 2, "School": "Evocation", "Casting Time": "1 action",
                 "Range": "90 feet", "Duration": "Instantaneous", 
                 "Components": ["V", "S", "M"], "Concentration": False,
                 "desc": "A shimmering green arrow streaks toward a target..."
             },
             "Detect Magic": {
-                "type": "spell",
+                "category": "spell",
                 "Level": 1, "School": "Divination", "Casting Time": "1 action",
                 "Range": "Self", "Duration": "10 min", 
                 "Components": ["V", "S"], "Concentration": True,
                 "desc": "For the duration, you sense the presence of magic..."
             },
             # --- Monsters ---
-            "Goblin": {
-                "type": "monster", 
-                "Armor Class": 15, "Hit Points": 7, "Speed": "30 ft.", "Challenge": "1/4",
-                "Strength": 8, "Dexterity": 14, "Constitution": 10,
+            "Goblin Scout": {
+                "category": "monster",
+                "Armor Class": 15, "Hit Points": 7, "Speed": "30 ft.",
+                "Strength": 8, "Dexterity": 14, "Constitution": 10, 
                 "Intelligence": 10, "Wisdom": 8, "Charisma": 8,
-                "desc": "Goblins are small, black-hearted, selfish humanoids..."
+                "inventory": ["Shortbow", "Potion of Healing"], 
+                "desc": "Small and fast goblin."
             },
-            "Ancient Red Dragon": {
-                "type": "monster",
-                "Armor Class": 22, "Hit Points": 546, "Speed": "40 ft., fly 80 ft.", "Challenge": "24",
-                "Strength": 30, "Dexterity": 10, "Constitution": 29,
-                "Intelligence": 18, "Wisdom": 15, "Charisma": 23,
-                "desc": "The most covetous of the true dragons..."
+            "Orc Warrior": {
+                "category": "monster",
+                "Armor Class": 13, "Hit Points": 15, "Speed": "30 ft.",
+                "Strength": 16, "Dexterity": 12, "Constitution": 16, 
+                "Intelligence": 7, "Wisdom": 11, "Charisma": 10,
+                "inventory": ["Iron Sword", "Heavy Crossbow"],
+                "desc": "Brutal fighter."
+            }        
             }
-        }
+        
         
         # Splitter - for side screen and main screen 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -87,6 +96,7 @@ class MainWindow(QMainWindow):
         # Test items for side screen
         self.list_widget = QListWidget()
         self.list_widget.addItems(self.all_data.keys())
+        #self.list_widget.addItems(self.items_db.keys())
         self.list_widget.currentItemChanged.connect(self.display_items)
         # Adding Widgets to side screen
         layout.addWidget(self.search_bar)
@@ -108,6 +118,8 @@ class MainWindow(QMainWindow):
         
     
     def get_desc(self,data):
+        desc_box = QVBoxLayout()
+        
         return
            
     # Display the character info 
@@ -123,6 +135,10 @@ class MainWindow(QMainWindow):
         for attr in ["Hit Points", "Armor Class", "Speed", "Challenge"]:
             item_attr = str(data.get(attr, "-"))
             combat_layout.addRow(QLabel(f"{attr}: "), QLabel(f"{item_attr}"))
+        
+        combat_group.setLayout(combat_layout)
+        self.right_layout.addWidget(combat_group)
+        
         # Attributes 
         abil_group = QGroupBox("Abbility Scores")
         grid =  QGridLayout()
@@ -184,7 +200,28 @@ class MainWindow(QMainWindow):
 
         # Description
         self.get_desc(data.get("desc", "")) 
-    
+
+    def setup_item_layout(self, name, data):
+        title = QLabel(f"{name} (item)")
+        title.setStyleSheet("font-size: 22px; font-weight: bold; color: green;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.right_layout.addWidget(title)
+        group = QGroupBox("Item Details")
+        form = QFormLayout()
+        
+        attrs = []
+        for attr in attrs:
+            val = data.get(attr, "-")
+            lbl_name = QLabel(attr)
+            lbl_value = QLabel(val)
+            lbl_name.setStyleSheet("color: gray; font-size: 10px;")
+            lbl_value.setStyleSheet("font-size: 16px; font-weight: bold;")
+            form.addRow(lbl_name, lbl_value)
+        group.setLayout(form)
+        self.right_layout.addWidget(group)
+        # TODO: Add description
+        
+        
     # Display currently selected item on right panel - main screen
     def display_items(self,current, previous):
         if not current:
@@ -196,17 +233,24 @@ class MainWindow(QMainWindow):
             return
         # Clear screen before loading new data
         self.clear_layout(self.right_layout)
-        # Get type 
-        item_type = data.get("type", "unknown")
-        if item_type == "monster" or item_type == "character":
+        # Get category 
+        item_category = data.get("category", "unknown")
+        if item_category == "monster" or item_category == "character":
             self.setup_character_layout(name, data)
-        elif item_type == "spell":
+        elif item_category == "spell":
             self.setup_spell_layout(name, data)
         else: 
             self.right_layout.addWidget(QLabel("Couldn't load item"))        
         return
-    # TODO : Form to create 
+
     def create_character(self):
+        title = QLabel("Monster/CharacterCreation")
+        
+        group = QGroupBox("Creation")
+        form = QFormLayout()
+        return
+    
+    def create_item(self):
         return
     
     # TODO : Logic for function
