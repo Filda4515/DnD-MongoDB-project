@@ -228,6 +228,24 @@ class MainWindow(QMainWindow):
             val_desc.setStyleSheet("font-style: italic; color: #444;")
             self.right_layout.addWidget(val_desc)
 
+        btn_delete = QPushButton("Delete Monster")
+        btn_delete.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                font-weight: bold;
+                padding: 5px;
+                border-radius: 3px;
+                margin-top: 20px;
+            }
+            QPushButton:hover { background-color: #c82333; }
+        """)
+
+        entity_id = data.get("_id")
+        btn_delete.clicked.connect(lambda: self.delete_entity("monsters", entity_id, name))
+
+        self.right_layout.addWidget(btn_delete)
+
     # Display the item info
     def setup_item_layout(self, name, data):
         title = QLabel(f"{name} (Item)")
@@ -266,6 +284,24 @@ class MainWindow(QMainWindow):
             val_desc.setWordWrap(True)
             val_desc.setStyleSheet("font-style: italic; color: #444;")
             self.right_layout.addWidget(val_desc)
+
+        btn_delete = QPushButton("Delete Item")
+        btn_delete.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                font-weight: bold;
+                padding: 5px;
+                border-radius: 3px;
+                margin-top: 20px;
+            }
+            QPushButton:hover { background-color: #c82333; }
+        """)
+
+        entity_id = data.get("_id")
+        btn_delete.clicked.connect(lambda: self.delete_entity("items", entity_id, name))
+
+        self.right_layout.addWidget(btn_delete)
 
     # Filter items in search Bar
     def filter_items(self, text):
@@ -505,6 +541,34 @@ class MainWindow(QMainWindow):
 
     def on_save_success(self, response_data):
         QMessageBox.information(self, "Success", "Data saved successfully!")
+
+        self.all_data.clear()
+        self.fetch_all_data()
+
+        self.clear_layout(self.right_layout)
+
+    def delete_entity(self, endpoint, entity_id, name):
+        if not entity_id:
+            QMessageBox.warning(self, "Error", "Cannot delete: Missing ID.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Delete Confirmation",
+            f"Are you sure you want to delete '{name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            full_path = f"{endpoint}/{entity_id}"
+
+            self.del_worker = DataWorker(full_path, method="DELETE")
+            self.del_worker.data_signal.connect(lambda: self.on_delete_success(name))
+            self.del_worker.error_signal.connect(self.on_api_error)
+            self.del_worker.start()
+
+    def on_delete_success(self, name):
+        QMessageBox.information(self, "Success", f"Successfully deleted: {name}")
 
         self.all_data.clear()
         self.fetch_all_data()
