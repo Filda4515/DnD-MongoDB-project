@@ -26,6 +26,8 @@ class DataWorker(QThread):
                     response = client.get(url)
                 elif self.method == "POST":
                     response = client.post(url, json=self.data)
+                elif self.method == "PUT":
+                    response = client.put(url, json=self.data)
                 elif self.method == "DELETE":
                     response = client.delete(url)
             response.raise_for_status()
