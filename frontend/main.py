@@ -3,9 +3,8 @@ import httpx
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QPushButton, QVBoxLayout, QWidget, QSplitter, QMainWindow, QListWidget, QLineEdit, QLabel,
-    QFormLayout, QGroupBox, QGridLayout
+    QFormLayout, QGroupBox, QGridLayout, QDoubleSpinBox, QHBoxLayout, QFrame, QSpinBox, QComboBox, QMessageBox
 )
-from PyQt6.QtWidgets import QHBoxLayout, QFrame, QSpinBox, QComboBox, QMessageBox
 
 
 class DataWorker(QThread):
@@ -218,7 +217,16 @@ class MainWindow(QMainWindow):
         abil_group.setLayout(grid)
         self.right_layout.addWidget(abil_group)
 
-        self.get_desc(data.get("desc", ""))
+        desc_text = data.get("desc", "")
+        if desc_text:
+            lbl_desc = QLabel("Description:")
+            lbl_desc.setStyleSheet("font-weight: bold; margin-top: 10px;")
+            self.right_layout.addWidget(lbl_desc)
+
+            val_desc = QLabel(str(desc_text))
+            val_desc.setWordWrap(True)
+            val_desc.setStyleSheet("font-style: italic; color: #444;")
+            self.right_layout.addWidget(val_desc)
 
     # Display the item info
     def setup_item_layout(self, name, data):
@@ -272,22 +280,15 @@ class MainWindow(QMainWindow):
             if child.widget():
                 child.widget().deleteLater()
 
-    def get_desc(self, data):
-        # desc_box = QVBoxLayout()  TODO:???
-
-        return
-
     def create_monster(self):
         self.clear_layout(self.right_layout)
+        self.form_inputs = {}
 
         # Title
         title = QLabel("Create New Character / Monster")
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: #0078D7;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.right_layout.addWidget(title)
-
-        # Dictionary Inicialization
-        self.form_inputs = {}
 
         # Basic Info
         group_basic = QGroupBox("Basic Info")
@@ -406,6 +407,94 @@ class MainWindow(QMainWindow):
 
         self.save_data("monsters", data)
 
+    def create_item(self):
+        self.clear_layout(self.right_layout)
+        self.form_inputs = {}
+
+        # Title
+        title = QLabel("Create New Item")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #28a745;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.right_layout.addWidget(title)
+
+        # Basic Info Group
+        group_basic = QGroupBox("Item Properties")
+        form_basic = QFormLayout()
+
+        self.form_inputs["name"] = QLineEdit()
+        form_basic.addRow("Item Name:", self.form_inputs["name"])
+
+        self.form_inputs["value"] = QLineEdit()
+        self.form_inputs["value"].setPlaceholderText("e.g. 50 gp")
+        form_basic.addRow("Value:", self.form_inputs["value"])
+
+        self.form_inputs["weight"] = QDoubleSpinBox()
+        self.form_inputs["weight"].setRange(0.0, 500.0)
+        self.form_inputs["weight"].setSingleStep(0.1)
+        form_basic.addRow("Weight (lb):", self.form_inputs["weight"])
+
+        self.form_inputs["rarity"] = QComboBox()
+        self.form_inputs["rarity"].addItems(["Common", "Uncommon", "Rare", "Very Rare", "Legendary"])
+        form_basic.addRow("Rarity:", self.form_inputs["rarity"])
+
+        group_basic.setLayout(form_basic)
+        self.right_layout.addWidget(group_basic)
+
+        # Description Group
+        group_desc = QGroupBox("Description")
+        desc_layout = QVBoxLayout()
+        self.form_inputs["desc"] = QLineEdit()
+        self.form_inputs["desc"].setPlaceholderText("Describe the item's appearance or magic effects...")
+        desc_layout.addWidget(self.form_inputs["desc"])
+
+        group_desc.setLayout(desc_layout)
+        self.right_layout.addWidget(group_desc)
+
+        # Save Button
+        btn_save = QPushButton("Save Item")
+        btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                padding: 5px;
+                border: none;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:pressed {
+                background-color: #1e7e34;
+            }
+        """)
+        btn_save.clicked.connect(self.save_item_data)
+        self.right_layout.addWidget(btn_save)
+
+    def save_item_data(self):
+        data = {}
+
+        for key, widget in self.form_inputs.items():
+            if isinstance(widget, QLineEdit):
+                data[key] = widget.text()
+            elif isinstance(widget, QSpinBox) or isinstance(widget, QDoubleSpinBox):
+                data[key] = widget.value()
+            elif isinstance(widget, QComboBox):
+                data[key] = widget.currentText()
+
+        required_fields = ["name", "value", "desc"]
+        missing_fields = []
+        for field in required_fields:
+            if not data.get(field):
+                missing_fields.append(self.display_labels.get(field, field.capitalize()))
+
+        if missing_fields:
+            error_msg = "The following fields are required:\n\n" + "\n".join(missing_fields)
+            QMessageBox.warning(self, "Validation Error", error_msg)
+            return
+
+        self.save_data("items", data)
+
     # Save to endpoint
     def save_data(self, endpoint, data_to_save):
         self.save_worker = DataWorker(endpoint, method="POST", data=data_to_save)
@@ -421,9 +510,6 @@ class MainWindow(QMainWindow):
         self.fetch_all_data()
 
         self.clear_layout(self.right_layout)
-
-    def create_item(self):
-        return
 
 
 if __name__ == "__main__":
