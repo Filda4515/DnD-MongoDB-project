@@ -9,8 +9,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QFrame, QSpinBox, QComboBox, QMessageBo
 
 
 class DataWorker(QThread):
-    result_signal = pyqtSignal(dict)
-    data_received = pyqtSignal(list)
+    data_signal = pyqtSignal(object)
     error_signal = pyqtSignal(str)
 
     def __init__(self, endpoint, method="GET", data=None):
@@ -31,7 +30,7 @@ class DataWorker(QThread):
                 elif self.method == "DELETE":
                     response = client.delete(url)
             response.raise_for_status()
-            self.data_received.emit(response.json())
+            self.data_signal.emit(response.json())
         except Exception as e:
             self.error_signal.emit(str(e))
 
@@ -71,7 +70,7 @@ class MainWindow(QMainWindow):
         self.main_right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         # Buttons for creation
         self.button_layout = QHBoxLayout()
-        self.btn_char = QPushButton("New Character")
+        self.btn_char = QPushButton("New Monster")
         self.btn_char.clicked.connect(self.create_monster)
         self.btn_item = QPushButton("New Item")
         self.btn_item.clicked.connect(self.create_item)
@@ -119,13 +118,13 @@ class MainWindow(QMainWindow):
     def fetch_all_data(self):
         # Fetch monsters
         self.monster_worker = DataWorker("monsters")
-        self.monster_worker.data_received.connect(lambda data: self.on_data_loaded(data, "monster"))
+        self.monster_worker.data_signal.connect(lambda data: self.on_data_loaded(data, "monster"))
         self.monster_worker.error_signal.connect(self.on_api_error)
         self.monster_worker.start()
 
         # Fetch items
         self.item_worker = DataWorker("items")
-        self.item_worker.data_received.connect(lambda data: self.on_data_loaded(data, "item"))
+        self.item_worker.data_signal.connect(lambda data: self.on_data_loaded(data, "item"))
         self.item_worker.error_signal.connect(self.on_api_error)
         self.item_worker.start()
 
@@ -175,10 +174,19 @@ class MainWindow(QMainWindow):
         combat_layout = QFormLayout()
         for key in ["hp", "ac", "speed", "challenge"]:
             val = str(data.get(key, "-"))
-
             display_name = self.display_labels.get(key, key.title())
-
             combat_layout.addRow(QLabel(f"{display_name}: "), QLabel(val))
+
+        held_id = data.get("held_item_id")
+        item_name = "None"
+
+        if held_id:
+            for item in self.all_data.values():
+                if item.get("category") == "item" and str(item.get("_id")) == str(held_id):
+                    item_name = item.get("name", "Unknown Item")
+                    break
+
+        combat_layout.addRow(QLabel("Equipped Item:"), QLabel(f"<b>{item_name}</b>"))
 
         combat_group.setLayout(combat_layout)
         self.right_layout.addWidget(combat_group)
@@ -250,32 +258,6 @@ class MainWindow(QMainWindow):
             val_desc.setWordWrap(True)
             val_desc.setStyleSheet("font-style: italic; color: #444;")
             self.right_layout.addWidget(val_desc)
-
-    # Save created entity
-    def save_data(self, endpoint, data_to_save):
-        self.save_worker = DataWorker(endpoint, method="POST", data=data_to_save)
-
-        # 2. Prepojíme signály
-        self.save_worker.result_signal.connect(self.on_save_success)  # Úspech
-        self.save_worker.error_signal.connect(self.on_api_error)
-
-        # 3. Spustíme
-        self.save_worker.start()
-
-    def on_save_success(self, response_data):
-        name = response_data.get("name")
-        if not name:
-            return
-
-        # 1. Pridaj do lokálnych dát
-        # Ak API nevratilo kategoriu, doplníme ju, aby fungovalo klikanie
-        if "category" not in response_data:
-            response_data["category"] = "monster"
-
-        self.all_data[name] = response_data
-
-        # 2. Pridaj položku do QListWidgetu
-        self.list_widget.addItem(name)
 
     # Filter items in search Bar
     def filter_items(self, text):
@@ -422,14 +404,25 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Validation Error", error_msg)
             return
 
-        endpoint = "monsters"
-        self.save_data(endpoint, data)
+        self.save_data("monsters", data)
+
+    # Save to endpoint
+    def save_data(self, endpoint, data_to_save):
+        self.save_worker = DataWorker(endpoint, method="POST", data=data_to_save)
+
+        self.save_worker.data_signal.connect(self.on_save_success)
+        self.save_worker.error_signal.connect(self.on_api_error)
+        self.save_worker.start()
+
+    def on_save_success(self, response_data):
+        QMessageBox.information(self, "Success", "Data saved successfully!")
+
+        self.all_data.clear()
+        self.fetch_all_data()
+
+        self.clear_layout(self.right_layout)
 
     def create_item(self):
-        return
-
-    # TODO : Logic for function
-    def set_image_from_url(self, url):
         return
 
 
